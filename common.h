@@ -33,5 +33,19 @@ struct CUDA_variables{
 	
 	};
 
+struct preprocessVariableList{
+	float *d_A;
+	float *h_A;
+	
+	float *h_U;
+	float *h_V;
+	float *h_S;
+	
+	float *d_U;
+	float *d_V;
+	float *d_S;
+};
+
 typedef struct CUDA_variables cudaVar;
+typedef struct preprocessVariableList preprocessVariables;
 

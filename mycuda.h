@@ -1,5 +1,6 @@
 
 cudaVar initializeCuda(MatrixXd& W,MatrixXd& X1,MatrixXd& w_init, cudaVar cudaVariables,int n,int p);
+preprocessVariables initializeCudaForPreprocess(MatrixXd& S,preprocessVariables preprocessData,int n,int p);
 void matrixMultiplyonGPU(float * d_A, float * d_B, float * d_C,int n,int p);
 void copyBackProductfromCUDA(MatrixXf& product,float * from);
 void cubeOnGPU(cudaVar cudaVariables,int n,int p);
@@ -17,4 +18,5 @@ void matrixMultiplyTransposeImprovedonGPU(cudaVar cudaVariables,float p_,int n,i
 void create_blas_handler();
 void destroy_blas_handler();
 cudaVar findEigenOnCuda(cudaVar cudaVariables);
+void runSVDonCUDA(preprocessVariables preprocessData,VectorXd& singularValue,MatrixXd& singularVectors,int ROWS,int COLS);
 

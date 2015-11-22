@@ -1,0 +1,1 @@
+nvcc svd.cu -lcusolver

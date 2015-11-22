@@ -175,14 +175,19 @@ class FastICA{
 																		*/
 
 void FastICA::fastica(MatrixXd& X,int n_components, MatrixXd& S, MatrixXd& W,int max_iter, double tol){
-	timestamp_t prepr0 = get_timestamp();
-	
 	//n=rows,p=columns
 	int n,p;
-	
+	preprocessVariables preprocessData;
 	//take dimensions from global structure
 	n = dimensions.n;
 	p = dimensions.p;
+	
+	
+	
+	
+	timestamp_t prepr0 = get_timestamp();
+	
+	
 	/*
 	MatrixXd means(n,1);	//mean of each row
 	cout<<"means "<<endl;
@@ -192,6 +197,8 @@ void FastICA::fastica(MatrixXd& X,int n_components, MatrixXd& S, MatrixXd& W,int
 	//cout<<"u ";printRowCols(u);
 	
 	VectorXd d;	//d of svd
+	VectorXd singularValue(n,1);
+	MatrixXd singularVectors(n,n);
 	
 	MatrixXd K(n,n);
 	//cout<<"K ";	printRowCols(K);
@@ -237,13 +244,28 @@ void FastICA::fastica(MatrixXd& X,int n_components, MatrixXd& S, MatrixXd& W,int
 																				 * */
 	//reusing S as tr
 	S = X.transpose(); //***************************************/ This must avoid
-	//cout<<"S ";printRowCols(S);
-	//Now calculate svd
-	//Should try some other svd methods to optimize
+	cout<<"S ";printRowCols(S);
+	
+	
+	
 	#ifdef _DEBUG
 	startTime = get_timestamp();
 	#endif
 	JacobiSVD<MatrixXd> svd(S, ComputeThinU|ComputeThinV);
+	//Now calculate svd
+	//trying in cuda
+	//preprocessData = initializeCudaForPreprocess(S,preprocessData,n,p);
+	//runSVDonCUDA(preprocessData,singularValue,singularVectors,p,n);
+	
+	
+	//reusing W as u
+	W =svd.matrixV();
+	d = svd.singularValues();
+	
+	//W = singularVectors.transpose();
+	//d = singularValue;
+	
+
 	#ifdef _DEBUG
 	endTime = get_timestamp();
     printTime("SVD");
@@ -252,9 +274,15 @@ void FastICA::fastica(MatrixXd& X,int n_components, MatrixXd& S, MatrixXd& W,int
 																				/*
 																				 * Starting SVD Calculation
 																				 * */
-	//reusing W as u
-	W =svd.matrixV();
-	d = svd.singularValues();
+	
+	
+	
+	
+	
+	//cout<<"W "<<endl<<W<<endl;
+	//cout<<"d "<<endl<<d<<endl;
+	
+	//cout <<"Correct singularValues = "<<endl<<d<<endl;
 	
 																				/*
 																				 * u,d calculated

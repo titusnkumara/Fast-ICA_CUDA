@@ -29,6 +29,10 @@ using Eigen::MatrixXd ;
 #include "lib/myTimer.h"
 
 
+#include <cuda_runtime.h>
+#include <cusolverDn.h>
+#include "lib/helper_cuda.h"
+
 cublasHandle_t handle;
 
 __global__ 
@@ -154,6 +158,128 @@ void memSetInCuda(float *d_singleArray,float num,int sizeofSingleArray){
 	}
 	
 }
+
+void runSVDonCUDA(preprocessVariables preprocessData,VectorXd& singularValue,MatrixXd& singularVectors,int ROWS,int COLS){
+	//initilaize matrix
+	//int ROWS =1000;
+	//int COLS =3;
+	
+	
+    int i,j;
+	float *h_A = preprocessData.h_A;
+	float *d_A = preprocessData.d_A;
+	
+	float *h_U = preprocessData.h_U;
+	float *h_V = preprocessData.h_V;
+	float *h_S = preprocessData.h_S;
+	
+	
+	float *d_U = preprocessData.d_U;
+	float *d_V = preprocessData.d_V;
+	float *d_S = preprocessData.d_S;
+	
+    
+
+	//cuSolver initialization
+	cusolverDnHandle_t handle = NULL;
+	checkCudaErrors(cusolverDnCreate(&handle));
+	int worksize;
+	cusolverDnSgesvd_bufferSize(handle, ROWS, COLS, &worksize ); 
+	float *work;   
+	checkCudaErrors(cudaMalloc(&work, worksize * sizeof(float)));
+
+	// SVD execution
+	int *devInfo;           
+	checkCudaErrors(cudaMalloc(&devInfo, sizeof(int)));
+	checkCudaErrors(cusolverDnSgesvd (handle, 'A', 'A', ROWS, COLS, d_A, ROWS, d_S, d_U, ROWS, d_V, COLS, work, worksize, NULL, devInfo));
+    int devInfo_h = 0;  
+	checkCudaErrors(cudaMemcpy(&devInfo_h, devInfo, sizeof(int), cudaMemcpyDeviceToHost));
+    if (devInfo_h != 0) {
+		fprintf(stderr,"Error in svd execution\n");
+	}
+
+	// --- Moving the results from device to host
+    checkCudaErrors(cudaMemcpy(h_S, d_S, min(ROWS, COLS) * sizeof(float), cudaMemcpyDeviceToHost));
+    //checkCudaErrors(cudaMemcpy(h_U, d_U, COLS * COLS     * sizeof(float), cudaMemcpyDeviceToHost));
+    checkCudaErrors(cudaMemcpy(h_V, d_V, COLS * COLS     * sizeof(float), cudaMemcpyDeviceToHost));
+
+	/*
+    printf("Singular values\n");
+    for(i = 0; i < min(ROWS,COLS); i++) 
+		printf("%f ",h_S[i]);
+	printf("\n\n");
+	*/
+	for (int i = 0; i < singularValue.size(); i++){
+		
+		*(singularValue.data() + i) = (double)h_S[i];
+	}
+	
+	
+	/*
+    printf("\nLeft singular vectors - For y = A * x, the columns of U span the space of y\n");
+    for(i= 0; i < ROWS; i++) {
+        printf("\n");
+        for(j = 0; j < ROWS; j++)
+            printf("%f ",h_U[j*ROWS + i]);
+    }
+	printf("\n\n");	
+	
+	
+    printf("\nRight singular vectors - For y = A * x, the columns of V span the space of x\n");
+    for(i= 0; i < COLS; i++) {
+        printf("\n");
+        for(j = 0; j < COLS; j++)
+            printf("%f ",h_V[j*ROWS + i]);
+    }
+	*/
+	
+	
+	for (int i = 0; i < singularVectors.size(); i++){
+		
+		*(singularVectors.data() + i) = (double)h_V[i];
+	}
+    
+	cusolverDnDestroy(handle);
+	cudaDeviceSynchronize();
+}
+
+preprocessVariables initializeCudaForPreprocess(MatrixXd& S,preprocessVariables preprocessData,int n,int p){
+	//This is transform so row columns interchanged
+	timestamp_t prepr1 = get_timestamp();
+	
+	
+	int ROWS = p;
+	int COLS = n;
+	cout<<"COLS*COLS = "<<COLS*COLS<<endl;
+	cout<<"ROWS*ROWS = "<<ROWS*ROWS<<endl;
+	
+	
+	
+	MatrixXf DataMatrix = S.cast<float>();
+	
+    preprocessData.h_A = DataMatrix.data();
+	//allocate and copy to GPU
+             
+	checkCudaErrors(cudaMalloc(&preprocessData.d_A, ROWS * COLS * sizeof(float)));
+    checkCudaErrors(cudaMemcpy(preprocessData.d_A, preprocessData.h_A, ROWS * COLS * sizeof(float), cudaMemcpyHostToDevice));
+	
+	// host side SVD results space
+    //preprocessData.h_U = (float *)malloc(COLS * COLS * sizeof(float));
+    preprocessData.h_V = (float *)malloc(COLS * COLS * sizeof(float));
+    preprocessData.h_S = (float *)malloc(min(ROWS, COLS) * sizeof(float));
+	
+	
+	// --- device side SVD workspace and matrices
+	checkCudaErrors(cudaMalloc(&preprocessData.d_U,  COLS * COLS     * sizeof(float)));       
+	checkCudaErrors(cudaMalloc(&preprocessData.d_V,  COLS * COLS     * sizeof(float)));           
+	checkCudaErrors(cudaMalloc(&preprocessData.d_S,  min(ROWS, COLS) * sizeof(float)));
+	
+	
+	timestamp_t prepr2 = get_timestamp();
+	 cout<<"initializeCudaForPreprocess "<<(prepr2 - prepr1) / 1000000.0L<<endl;
+	return preprocessData;
+}
+
 
 
 cudaVar initializeCuda(MatrixXd& W,MatrixXd& X1,MatrixXd& w_init,cudaVar cudaVariables,int n,int p){
