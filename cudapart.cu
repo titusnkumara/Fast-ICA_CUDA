@@ -18,6 +18,17 @@
 #include <sys/time.h>
 #include <time.h>
 
+#include <string.h>
+#include <assert.h>
+
+#include <cula_lapack.h>
+
+#include <cula_lapack_device.h>
+#include <cublas.h>
+#include "lib/helpers.cuh"
+
+#define imin(X, Y)  ((X) < (Y) ? (X) : (Y))
+//void checkStatus(culaStatus status);
 
 using namespace Eigen;
 using namespace std;
@@ -31,7 +42,6 @@ using Eigen::MatrixXd ;
 
 #include <cuda_runtime.h>
 #include <cusolverDn.h>
-#include "lib/helper_cuda.h"
 
 cublasHandle_t handle;
 
@@ -159,127 +169,125 @@ void memSetInCuda(float *d_singleArray,float num,int sizeofSingleArray){
 	
 }
 
-void runSVDonCUDA(preprocessVariables preprocessData,VectorXd& singularValue,MatrixXd& singularVectors,int ROWS,int COLS){
+int runSVDonCUDA(MatrixXd& input,VectorXd& singularValue,MatrixXd& singularVectors,int ROWS,int COLS){
 	//initilaize matrix
 	//int ROWS =1000;
 	//int COLS =3;
+	MatrixXf DataMatrix = input.cast<float>();
+	
+    float* h_A = DataMatrix.data();
 	
 	
-    int i,j;
-	float *h_A = preprocessData.h_A;
-	float *d_A = preprocessData.d_A;
+	int M = ROWS;
+    int N = COLS;
 	
-	float *h_U = preprocessData.h_U;
-	float *h_V = preprocessData.h_V;
-	float *h_S = preprocessData.h_S;
+	culaStatus status;
 	
+	/* Setup SVD Parameters */
+    int LDA = M;
+    int LDU = M;
+    int LDVT = N;
+   
+    float* A = NULL;
+    float* S = NULL;
+    float* U = NULL;
+    float* VT = NULL;
 	
-	float *d_U = preprocessData.d_U;
-	float *d_V = preprocessData.d_V;
-	float *d_S = preprocessData.d_S;
-	
-    
+	time_t begin_time;
+    time_t end_time;
+    int cula_time;
 
-	//cuSolver initialization
-	cusolverDnHandle_t handle = NULL;
-	checkCudaErrors(cusolverDnCreate(&handle));
-	int worksize;
-	cusolverDnSgesvd_bufferSize(handle, ROWS, COLS, &worksize ); 
-	float *work;   
-	checkCudaErrors(cudaMalloc(&work, worksize * sizeof(float)));
-
-	// SVD execution
-	int *devInfo;           
-	checkCudaErrors(cudaMalloc(&devInfo, sizeof(int)));
-	checkCudaErrors(cusolverDnSgesvd (handle, 'A', 'A', ROWS, COLS, d_A, ROWS, d_S, d_U, ROWS, d_V, COLS, work, worksize, NULL, devInfo));
-    int devInfo_h = 0;  
-	checkCudaErrors(cudaMemcpy(&devInfo_h, devInfo, sizeof(int), cudaMemcpyDeviceToHost));
-    if (devInfo_h != 0) {
-		fprintf(stderr,"Error in svd execution\n");
-	}
-
-	// --- Moving the results from device to host
-    checkCudaErrors(cudaMemcpy(h_S, d_S, min(ROWS, COLS) * sizeof(float), cudaMemcpyDeviceToHost));
-    //checkCudaErrors(cudaMemcpy(h_U, d_U, COLS * COLS     * sizeof(float), cudaMemcpyDeviceToHost));
-    checkCudaErrors(cudaMemcpy(h_V, d_V, COLS * COLS     * sizeof(float), cudaMemcpyDeviceToHost));
+    char jobu = 'N';
+    char jobvt = 'A';
+	
+			//cout<<"checking h_A 1 "<<h_A[0]<<" "<<h_A[1]<<" "<<h_A[1]<<endl;
+	
+	cudaMalloc((void**)&A, M*N*sizeof(float ));checkCudaError();
+			//cout<<"checking h_A 2 "<<h_A[0]<<" "<<h_A[1]<<" "<<h_A[1]<<endl;
+	cudaMemcpy( A, h_A,  M*N*sizeof(float ), cudaMemcpyHostToDevice );checkCudaError();
+			//cout<<"checking h_A 3 "<<h_A[0]<<" "<<h_A[1]<<" "<<h_A[1]<<endl;
+			//float * test = (float *)malloc(M*N*sizeof(float ));
+			//cudaMemcpy( test, A,  M*N*sizeof(float ), cudaMemcpyDeviceToHost );checkCudaError();
+			//cout<<"checking h_A 4 "<<h_A[0]<<" "<<h_A[1]<<" "<<h_A[1]<<endl;
+			
+			//checking elements
+			//cout<<test[0]<<" "<<test[1]<<" "<<test[2]<<endl;
+	//sleep(1);
+	//A = (float*)malloc(M*N*sizeof(float));
+	cudaMalloc( (void**)&S, imin(M,N)*sizeof(float));checkCudaError();
+    //S = (float*)malloc(imin(M,N)*sizeof(float));
+    //U = (float*)malloc(N*N*sizeof(float));
+	cudaMalloc( (void**)&VT, LDVT*N*sizeof(float));checkCudaError();
+    //VT = (float*)malloc(LDVT*N*sizeof(float));
 
 	/*
-    printf("Singular values\n");
-    for(i = 0; i < min(ROWS,COLS); i++) 
-		printf("%f ",h_S[i]);
-	printf("\n\n");
-	*/
-	for (int i = 0; i < singularValue.size(); i++){
-		
-		*(singularValue.data() + i) = (double)h_S[i];
-	}
-	
-	
-	/*
-    printf("\nLeft singular vectors - For y = A * x, the columns of U span the space of y\n");
-    for(i= 0; i < ROWS; i++) {
-        printf("\n");
-        for(j = 0; j < ROWS; j++)
-            printf("%f ",h_U[j*ROWS + i]);
-    }
-	printf("\n\n");	
-	
-	
-    printf("\nRight singular vectors - For y = A * x, the columns of V span the space of x\n");
-    for(i= 0; i < COLS; i++) {
-        printf("\n");
-        for(j = 0; j < COLS; j++)
-            printf("%f ",h_V[j*ROWS + i]);
+	if(!A || !S  || !VT) 
+    {
+        free(A);
+        //free(U);
+        free(S);
+        free(VT);
+
+        return EXIT_FAILURE;
     }
 	*/
+	/* Initialize CULA */
+    status = culaInitialize();
+    //checkStatus(status);
+	 /* Perform singular value decomposition CULA */
+    printf("Performing singular value decomposition using CULA ... \n");
+
+    time(&begin_time);
+    status = culaDeviceSgesvd(jobu, jobvt, M, N, A, LDA, S, U, LDU, VT, LDVT);
+    //checkStatus(status);
+    time(&end_time);
+
+	
+    cula_time = (int)difftime( end_time, begin_time);
+	
+	
+	
+	culaShutdown();
+	//copy back data,maybe should move before culashutdown
+	float* S_tmp;
+	float * VT_tmp;
+	S_tmp = (float*)malloc(imin(M,N)*sizeof(float));
+	VT_tmp = (float*)malloc(LDVT*N*sizeof(float));
+	cudaMemcpy(S_tmp,S,imin(M,N)*sizeof(float),cudaMemcpyDeviceToHost);checkCudaError();
+	cudaMemcpy(VT_tmp,VT,LDVT*N*sizeof(float),cudaMemcpyDeviceToHost);checkCudaError();
 	
 	
 	for (int i = 0; i < singularVectors.size(); i++){
 		
-		*(singularVectors.data() + i) = (double)h_V[i];
+		*(singularVectors.data() + i) = (double)VT_tmp[i];
 	}
-    
-	cusolverDnDestroy(handle);
-	cudaDeviceSynchronize();
-}
+	
+	for (int i = 0; i < singularValue.size(); i++){
+		
+		*(singularValue.data() + i) = (double)S_tmp[i];
+	}
+	
+	cudaDeviceSynchronize();checkCudaError();
 
+    return EXIT_SUCCESS;
+
+}
+/*
 preprocessVariables initializeCudaForPreprocess(MatrixXd& S,preprocessVariables preprocessData,int n,int p){
 	//This is transform so row columns interchanged
 	timestamp_t prepr1 = get_timestamp();
 	
-	
-	int ROWS = p;
-	int COLS = n;
-	cout<<"COLS*COLS = "<<COLS*COLS<<endl;
-	cout<<"ROWS*ROWS = "<<ROWS*ROWS<<endl;
-	
-	
-	
 	MatrixXf DataMatrix = S.cast<float>();
 	
     preprocessData.h_A = DataMatrix.data();
-	//allocate and copy to GPU
-             
-	checkCudaErrors(cudaMalloc(&preprocessData.d_A, ROWS * COLS * sizeof(float)));
-    checkCudaErrors(cudaMemcpy(preprocessData.d_A, preprocessData.h_A, ROWS * COLS * sizeof(float), cudaMemcpyHostToDevice));
 	
-	// host side SVD results space
-    //preprocessData.h_U = (float *)malloc(COLS * COLS * sizeof(float));
-    preprocessData.h_V = (float *)malloc(COLS * COLS * sizeof(float));
-    preprocessData.h_S = (float *)malloc(min(ROWS, COLS) * sizeof(float));
-	
-	
-	// --- device side SVD workspace and matrices
-	checkCudaErrors(cudaMalloc(&preprocessData.d_U,  COLS * COLS     * sizeof(float)));       
-	checkCudaErrors(cudaMalloc(&preprocessData.d_V,  COLS * COLS     * sizeof(float)));           
-	checkCudaErrors(cudaMalloc(&preprocessData.d_S,  min(ROWS, COLS) * sizeof(float)));
-	
-	
+	cout<<"preprocessData.h_A"<<preprocessData.h_A[0]<<" "<<preprocessData.h_A[1]<<" "<<preprocessData.h_A[1]<<endl;
+
 	timestamp_t prepr2 = get_timestamp();
-	 cout<<"initializeCudaForPreprocess "<<(prepr2 - prepr1) / 1000000.0L<<endl;
+	cout<<"initializeCudaForPreprocess "<<(prepr2 - prepr1) / 1000000.0L<<endl;
 	return preprocessData;
 }
-
+*/
 
 
 cudaVar initializeCuda(MatrixXd& W,MatrixXd& X1,MatrixXd& w_init,cudaVar cudaVariables,int n,int p){

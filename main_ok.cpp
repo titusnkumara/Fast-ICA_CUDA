@@ -1,4 +1,6 @@
 
+//#define RUNONCPU 1
+
 #include <iostream>
 #include <Eigen/Dense>
 #include <Eigen/Eigenvalues>
@@ -244,26 +246,34 @@ void FastICA::fastica(MatrixXd& X,int n_components, MatrixXd& S, MatrixXd& W,int
 																				 * */
 	//reusing S as tr
 	S = X.transpose(); //***************************************/ This must avoid
+	
+	MatrixXd S_tmp(p,n);
+	S_tmp = S;
+
 	cout<<"S ";printRowCols(S);
+	cout<<"S_tmp ";printRowCols(S_tmp);
 	
 	
 	
 	#ifdef _DEBUG
 	startTime = get_timestamp();
 	#endif
+	
+	
+	#ifdef RUNONCPU
+	
 	JacobiSVD<MatrixXd> svd(S, ComputeThinU|ComputeThinV);
-	//Now calculate svd
-	//trying in cuda
-	//preprocessData = initializeCudaForPreprocess(S,preprocessData,n,p);
-	//runSVDonCUDA(preprocessData,singularValue,singularVectors,p,n);
-	
-	
-	//reusing W as u
+	//reusing W as u JacobiSVD
 	W =svd.matrixV();
 	d = svd.singularValues();
 	
-	//W = singularVectors.transpose();
-	//d = singularValue;
+	#else
+		
+	//CUDASVD
+	runSVDonCUDA(S,singularValue,singularVectors,p,n);
+	W = singularVectors.transpose();
+	d = singularValue;
+	#endif
 	
 
 	#ifdef _DEBUG
