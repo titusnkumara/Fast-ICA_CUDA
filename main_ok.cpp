@@ -1,6 +1,9 @@
 
 //#define RUNONCPU 1
 
+
+
+
 #include <iostream>
 #include <Eigen/Dense>
 #include <Eigen/Eigenvalues>
@@ -66,11 +69,11 @@ struct results{
 
 void  readInputData(MatrixXd& X,char * file, int row,int column);
 
-void getMean(MatrixXd& means,MatrixXd& X,int n);
-void normalize(MatrixXd& X,MatrixXd means,int rows);
+void getMean(VectorXd& means,MatrixXd& X,int n);
+void normalize(MatrixXd& X,VectorXd& means,int rows);
 void devide(MatrixXd& u,VectorXd& d,int cols);
 MatrixXd generateRandomMatrix(int n);
-void _ica_par(MatrixXd& W,MatrixXd& X1,MatrixXd& w_init,int max_iter,double tol,MatrixXd& S);
+void _ica_par(preprocessVariables* DevicePointers,MatrixXd& W,MatrixXd& X1,MatrixXd& w_init,int max_iter,double tol);
 void _sym_decorrelation(MatrixXd& W,MatrixXd& w_init);
 MatrixXd arrayMultiplierRowWise(MatrixXd u,ArrayXXd temp,int n);
 ArrayXXd multiplyColumnWise(MatrixXd& g_wtx,MatrixXd& W,ArrayXXd& W_in,ArrayXXd& g_wtx_in);
@@ -80,6 +83,8 @@ void cube(MatrixXd& gwtx,MatrixXd& xin,ArrayXXd& x);
 void cubed(MatrixXd& g_wtx,MatrixXd& xin,ArrayXXd& x);
 
 void WriteResultToFile(MatrixXd& S,char * file);
+void WriteTestToFile(VectorXd& V,char * file);
+void WriteMatrixToFile(MatrixXd& S,char * file);
 
 void printRowCols(MatrixXd& X);
 void printTime(const char part[]);
@@ -179,7 +184,8 @@ class FastICA{
 void FastICA::fastica(MatrixXd& X,int n_components, MatrixXd& S, MatrixXd& W,int max_iter, double tol){
 	//n=rows,p=columns
 	int n,p;
-	preprocessVariables preprocessData;
+	create_blas_handler();	//creating blas handler for matrix multiplications
+	
 	//take dimensions from global structure
 	n = dimensions.n;
 	p = dimensions.p;
@@ -195,6 +201,7 @@ void FastICA::fastica(MatrixXd& X,int n_components, MatrixXd& S, MatrixXd& W,int
 	cout<<"means "<<endl;
 	printRowCols(means);
 	*/
+	VectorXd means(n);
 	MatrixXd u(n,n);	//u of svd
 	//cout<<"u ";printRowCols(u);
 	
@@ -223,89 +230,82 @@ void FastICA::fastica(MatrixXd& X,int n_components, MatrixXd& S, MatrixXd& W,int
 	#ifdef _DEBUG
 	startTime= get_timestamp();
 	#endif
-	//here I use w for storing means without allocation another memory
-	getMean(W,X,n);
-	#ifdef _DEBUG
-    endTime = get_timestamp();
-    printTime("Mean function");
-	#endif
 	
-	//substracting mean from every element
-	#ifdef _DEBUG
-	startTime = get_timestamp();
-	#endif
-	normalize(X,W,n);
-	#ifdef _DEBUG
-	endTime = get_timestamp();
-    printTime("Normalize");
-	#endif
-	
-																				/*
-																				 * Centering is finished
-																				 * Starting SVD
-																				 * */
+	//this matrix should removed
+	//MatrixXd X_outnorm(n,p);
+	#ifdef RUNONCPU
+	getMean(means,X,n);
+	normalize(X,means,n);
 	//reusing S as tr
 	S = X.transpose(); //***************************************/ This must avoid
-	
-	MatrixXd S_tmp(p,n);
-	S_tmp = S;
+	#else
+	//run on GPU
+	preprocessVariables DevicePointers;
+	getMeanNormalizeOnCUDA(means,X,n,p,&DevicePointers);
+	//cout<<"means from cuda = "<<endl<<means<<endl;
+	#endif
 
-	cout<<"S ";printRowCols(S);
-	cout<<"S_tmp ";printRowCols(S_tmp);
-	
-	
-	
+	#ifdef _DEBUG
+    endTime = get_timestamp();
+    printTime("Mean and Normalize function");
+	#endif
+
+	//SVD
 	#ifdef _DEBUG
 	startTime = get_timestamp();
 	#endif
-	
-	
+
 	#ifdef RUNONCPU
-	
-	JacobiSVD<MatrixXd> svd(S, ComputeThinU|ComputeThinV);
+	//if this is defined this will run on CPU
+	JacobiSVD<MatrixXd> svd(S, ComputeThinV);
 	//reusing W as u JacobiSVD
 	W =svd.matrixV();
 	d = svd.singularValues();
+	//cout<<"W"<<endl<<W<<endl;
+	//cout<<"d"<<endl<<d<<endl;
+	
+	WriteTestToFile(d,"cpusingular.txt");
+	WriteMatrixToFile(W,"VTcpu.txt");
 	
 	#else
-		
-	//CUDASVD
-	runSVDonCUDA(S,singularValue,singularVectors,p,n);
+	//CUDASVD will run
+	runSVDonCUDA(DevicePointers.d_X_trf,singularValue,singularVectors,&DevicePointers,p,n);
 	W = singularVectors.transpose();
 	d = singularValue;
+	WriteTestToFile(d,"gpusingular.txt");
+	WriteMatrixToFile(W,"VTgpu.txt");
 	#endif
+	
 	
 
 	#ifdef _DEBUG
 	endTime = get_timestamp();
     printTime("SVD");
 	#endif
-	
-																				/*
-																				 * Starting SVD Calculation
-																				 * */
+
 	
 	
 	
+	//cout<<"W before devide"<<endl<<W<<endl;
+	devide(W,d,n);//cpu
+	//cout<<"d"<<endl<<d<<endl;
+	//cout<<"W after devide"<<endl<<W<<endl;
+	K = W.transpose();//cpu
+	//cout<<"K from CPU"<<endl<<K<<endl;
 	
-	
-	//cout<<"W "<<endl<<W<<endl;
-	//cout<<"d "<<endl<<d<<endl;
-	
-	//cout <<"Correct singularValues = "<<endl<<d<<endl;
-	
-																				/*
-																				 * u,d calculated
-																				 * */
-	
-	
-	devide(W,d,n);
-	K = W.transpose();
-	
+	//cout<<"(K*X)*sqrt(p)"<<endl<<(K*X)*sqrt(p)<<endl;
 	//x1 cannot replaced since it uses X also
-	X1 = (K*X)*sqrt(p);
+	X1 = (K*X)*sqrt(p);//cpu
 	//cout<<"X ";printRowCols(X);
 	//cout<<"X1 ";printRowCols(X1);
+	
+	#ifndef RUNONCPU
+	//multiply in GPU
+	//K is already in GPU
+	devideVTbySingularValues(DevicePointers.d_VT,DevicePointers.d_VTT,DevicePointers.d_S,n);//gpu
+	multiplyOnGPU_K_X(&DevicePointers,n,p);//gpu
+	#endif
+	
 	
 	#ifdef _PRINTOUTPUT
 	cout<<"final preprocess "<<endl;
@@ -331,7 +331,12 @@ void FastICA::fastica(MatrixXd& X,int n_components, MatrixXd& S, MatrixXd& W,int
 	timestamp_t ica0 = get_timestamp();
 	//calling the _ica_par paralleld ica algorithm function
 	//it will return W
-	_ica_par(W,X1,w_init,max_iter,tol,S);
+	
+	cout<<"Printing current matrices that passes to _ica_par"<<endl;
+	//cout<<"W"<<endl<<W<<endl;
+	//cout<<"X1 cpu"<<endl<<X1<<endl;
+	
+	_ica_par(&DevicePointers,W,X1,w_init,max_iter,tol);
 	//now we have mixed matrix W
 	
 	//measure finished time
@@ -371,6 +376,37 @@ void WriteResultToFile(MatrixXd& S,char * file){
 	
 }
 
+void WriteMatrixToFile(MatrixXd& S,char * file){	
+	FILE * fp = fopen(file,"w");
+	int  i,j;
+	int row = dimensions.n;
+	int column = dimensions.n;
+	//printf("%d %d %ld %ld\n",row,column,S.rows(),S.cols());
+  for(i=0;i<row;i++){
+	  for(j=0;j<column;j++){
+		  fprintf(fp,"%lf ",S(j,i));
+	  }
+	  fprintf(fp,"\n");	  
+  }
+  
+	
+}
+
+void WriteTestToFile(VectorXd& V,char * file){	
+	FILE * fp = fopen(file,"w");
+	int  j;
+	int column = dimensions.n;
+	
+	  for(j=0;j<column;j++){
+		  fprintf(fp,"%lf ",V(j));
+	  }
+	  fprintf(fp,"\n");	  
+  
+  
+	
+}
+
+
 void _sym_decorrelation(MatrixXd& W1,MatrixXd& w_init){
 	
 	MatrixXd wt;
@@ -382,8 +418,12 @@ void _sym_decorrelation(MatrixXd& W1,MatrixXd& w_init){
 	MatrixXcd values;	//complex array returned by eigenvalues
 	MatrixXcd vectors;	//complex array returned by eigenvectors
 	
+	//cout<<"W1 size"<<endl;
+	//cout<<W1.rows()<<" "<<W1.cols();
 	wt = w_init.transpose();
 	W1	= w_init * wt;
+	
+	cout<<"W1 cpu"<<endl<<W1<<endl;
 	/*
 	cout<<"w_init cpu"<<endl;
 	cout<<w_init<<endl;
@@ -420,12 +460,12 @@ void _sym_decorrelation(MatrixXd& W1,MatrixXd& w_init){
 	}
 	
 	
-	/*
+	
 	cout<<"Native eigen values"<<endl;
 	cout<<s<<endl;
 	cout<<"Native eigen vectors"<<endl;
 	cout<<u<<endl;
-	*/
+	
 	/*
 	cout<<"(1/sqrt(s.array()))"<<endl;
 	cout<<(1/sqrt(s.array()))<<endl;
@@ -438,7 +478,7 @@ void _sym_decorrelation(MatrixXd& W1,MatrixXd& w_init){
 	cout<<"(arrayMultiplierRowWise(u,(1/sqrt(s.array())),n) * u.transpose()) in cpu"<<endl;
 	cout<<(arrayMultiplierRowWise(u,(1/sqrt(s.array())),n) * u.transpose())<<endl;
 	*/
-	
+	cout<<"CPU ans"<<endl<<arrayMultiplierRowWise(u,(1/sqrt(s.array())),n)<<endl;
 	
 	W1 = (arrayMultiplierRowWise(u,(1/sqrt(s.array())),n) * u.transpose())*w_init;
 	
@@ -455,18 +495,24 @@ Multiply each row of u by temp
 MatrixXd arrayMultiplierRowWise(MatrixXd u,ArrayXXd temp,int n){
 	ArrayXXd uArray = u.array();
 	int i;
+	//cout<<"Eigenvalues CPU * "<<endl<<temp<<endl;
 	for(i=0;i<n;i++){
+		//cout<<"eigenvector CPU "<<endl<<uArray.row(i)<<endl;
+		
 		uArray.row(i) *= temp;
 	}
 	return uArray.matrix();
 }
 
 
+
+
+
 																				/*
 																				Parallel ICA algorithm
 																				*/
 
-void _ica_par(MatrixXd& W,MatrixXd& X1,MatrixXd& w_init,int max_iter,double tol,MatrixXd& S){
+void _ica_par(preprocessVariables* DevicePointers,MatrixXd& W,MatrixXd& X1,MatrixXd& w_init,int max_iter,double tol){
 	
 	
 	//What I recieve
@@ -489,7 +535,16 @@ void _ica_par(MatrixXd& W,MatrixXd& X1,MatrixXd& w_init,int max_iter,double tol,
 	float limFromCuda;
 	bool success = false;
 	
-	_sym_decorrelation(W,w_init);
+	//w_init is random matrix
+	//W is d_VTT
+	
+	//MatrixXd W2(dimensions.n,dimensions.n);
+	
+	W=sym_decorrelation_cuda(DevicePointers->d_w_init,DevicePointers->d_VTT,w_init,dimensions.n);
+	//_sym_decorrelation(W,w_init);
+	//cout<<"W GPU"<<endl<<W<<endl;
+	//cout<<"W1 CPU"<<endl<<W<<endl;
+	
 	
 	
 	p_ = (double)dimensions.p;
@@ -522,8 +577,8 @@ void _ica_par(MatrixXd& W,MatrixXd& X1,MatrixXd& w_init,int max_iter,double tol,
 	MatrixXf tmp(dimensions.n,dimensions.n);
 	
 	cudaVar cudaVariables;
-	cudaVariables = initializeCuda(W,X1,w_init,cudaVariables,dimensions.n,dimensions.p);
-	create_blas_handler();	//creating blas handler for matrix multiplications
+	cudaVariables = initializeCuda(DevicePointers,W,X1,w_init,cudaVariables,dimensions.n,dimensions.p);
+	
 	
 	
 	
@@ -680,7 +735,7 @@ ArrayXXd multiplyColumnWise(MatrixXd& g_wtx,MatrixXd& W,ArrayXXd& W_in,ArrayXXd&
 	}
 	return W_in;
 }
-
+/*
 void cube(MatrixXd& gwtx,MatrixXd& xin,ArrayXXd& x){
 	//cout<<xin.rows()<<" "<<xin.cols();
 	x = xin.array();	//convert to Array
@@ -693,10 +748,7 @@ void cubed(MatrixXd& g_wtx,MatrixXd& xin,ArrayXXd& x){
 	x*=x;
 	xin =(3*x).matrix();	//3*x^2
 	
-	/*
-	cout<<"g' from cpu is "<<endl;
-	cout<<xin<<endl;
-	*/
+
 	//finding sum
 	
 	int i;
@@ -714,6 +766,7 @@ void cubed(MatrixXd& g_wtx,MatrixXd& xin,ArrayXXd& x){
 	
 	g_wtx = means;
 }
+*/
 
 //generate random matrix
 //for convinience I put the matrix same as python solution
@@ -738,21 +791,21 @@ void devide(MatrixXd& u,VectorXd& d,int cols){
 	}
 }
 
-void normalize(MatrixXd& X,MatrixXd means,int rows){
+void normalize(MatrixXd& X,VectorXd& means,int rows){
 	
 	//do element vise operation for every element
 	//convert it to array and do the task
 	int i;
 	for(i=0;i<rows;i++){
-		X.row(i) = X.row(i).array() - means(i,0);
+		X.row(i) = X.row(i).array() - means(i);
 	}
 	
 }
 
-void getMean(MatrixXd& means,MatrixXd& X,int n){
+void getMean(VectorXd& means,MatrixXd& X,int n){
 	int i;
 	for(i=0;i<n;i++){
-		means(i,0) = X.row(i).mean();
+		means(i) = X.row(i).mean();
 		
 	}
 }

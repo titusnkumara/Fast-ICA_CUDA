@@ -1,0 +1,25 @@
+dataset 118 5000
+Reading :4.251202
+Mean and Normalize function :0.005062
+Performing singular value decomposition using CULA ... 
+Status of SVD= 0
+SVD :0.06467
+preprocess 0.093199
+matmultiplicationTime: 0.058409
+cubeTime: 0.032699
+transposeMulTime: 0.322403
+columnviseTime: 0.005003
+subtractTime: 0.001774
+copyTime: 0.061504
+symDecorelationTime: 2.283222
+limTime: 0.003405
+saveWTime: 0.096516
+Total_Above: 2.864935
+Main_loop :2.865091
+Iterations: 144
+Time_per_iteration: 0.01989646528
+ICA_Parallel_Loop: 2.942859
+PostCalculations :0.025294
+
+TOTAL_TIME_FOR_ICA 7.450987
+writing 0.195603

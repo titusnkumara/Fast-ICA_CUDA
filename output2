@@ -1,0 +1,23 @@
+dataset 118 5000
+Reading :4.252053
+Mean and Normalize function :0.007872
+SVD :0.095998
+preprocess 0.129385
+matmultiplicationTime: 0.091135
+cubeTime: 0.050842
+transposeMulTime: 0.505959
+columnviseTime: 0.00789
+subtractTime: 0.002801
+copyTime: 0.096579
+symDecorelationTime: 3.284219
+limTime: 0.005231
+saveWTime: 0.151177
+Total_Above: 4.195833
+Main_loop :4.196033
+Iterations: 227
+Time_per_iteration: 0.01848472687
+ICA_Parallel_Loop: 4.272891
+PostCalculations :0.024575
+
+TOTAL_TIME_FOR_ICA 8.819839
+writing 0.190514
