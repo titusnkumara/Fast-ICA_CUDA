@@ -459,27 +459,35 @@ MatrixXd invokeDevideByDiagonal(float * d_eigenValues, float * d_eigenVectors,fl
 	return outputD;
 }
 
+void memSetForSymDecorrelationCUDA(MatrixXf& w_init,float * d_w_init,int n){
+	
+	
+	float * datapointer = w_init.data();
+	cudaMalloc( (void**)&d_w_init, n*n*sizeof(float));checkCudaError();
+	cudaMemcpy( d_w_init, datapointer,n*n*sizeof(float), cudaMemcpyHostToDevice );checkCudaError();
+	
+}
 
 
 
-MatrixXd sym_decorrelation_cuda(float * d_w_init ,float * d_VTT, MatrixXd& w_init ,int n){
+MatrixXd sym_decorrelation_cuda(float * d_VTT, float * d_w_init,int n){
 	
 	
 	//float 
 	float * d_w_init_tr;
 	float * d_w_init_w_init_tr;
 	
-	MatrixXf w_init_f = w_init.cast<float>();
+	//MatrixXf w_init_f = w_init.cast<float>();
 	
 	//cout<<"w_init_f"<<endl<<w_init_f<<endl;
 	
-	float * datapointer = w_init_f.data();
-	cudaMalloc( (void**)&d_w_init, n*n*sizeof(float));checkCudaError();
+	//float * datapointer = w_init_f.data();
+	//cudaMalloc( (void**)&d_w_init, n*n*sizeof(float));checkCudaError();
 	cudaMalloc( (void**)&d_w_init_tr, n*n*sizeof(float));checkCudaError();
 	cudaMalloc( (void**)&d_w_init_w_init_tr, n*n*sizeof(float));checkCudaError();
 	
 	//save w_init to cuda
-	cudaMemcpy( d_w_init, datapointer,n*n*sizeof(float), cudaMemcpyHostToDevice );checkCudaError();
+	//cudaMemcpy( d_w_init, datapointer,n*n*sizeof(float), cudaMemcpyHostToDevice );checkCudaError();
 	
 	TransposeMatrixInCUBLAS(d_w_init,d_w_init_tr,n,n);
 	

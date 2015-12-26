@@ -264,16 +264,16 @@ void FastICA::fastica(MatrixXd& X,int n_components, MatrixXd& S, MatrixXd& W,int
 	//cout<<"W"<<endl<<W<<endl;
 	//cout<<"d"<<endl<<d<<endl;
 	
-	WriteTestToFile(d,"cpusingular.txt");
-	WriteMatrixToFile(W,"VTcpu.txt");
+	//WriteTestToFile(d,"cpusingular.txt");
+	//WriteMatrixToFile(W,"VTcpu.txt");
 	
 	#else
 	//CUDASVD will run
 	runSVDonCUDA(DevicePointers.d_X_trf,singularValue,singularVectors,&DevicePointers,p,n);
 	W = singularVectors.transpose();
 	d = singularValue;
-	WriteTestToFile(d,"gpusingular.txt");
-	WriteMatrixToFile(W,"VTgpu.txt");
+	//WriteTestToFile(d,"gpusingular.txt");
+	//WriteMatrixToFile(W,"VTgpu.txt");
 	#endif
 	
 	
@@ -530,6 +530,9 @@ void _ica_par(preprocessVariables* DevicePointers,MatrixXd& W,MatrixXd& X1,Matri
 	
 	//ArrayXXd x(dimensions.n,dimensions.p);
 	
+	int n = dimensions.n;
+	int p = dimensions.p;
+	
 	MatrixXd W1(dimensions.n,dimensions.n);
 	double lim;	//limit to check with tolerance
 	float limFromCuda;
@@ -540,7 +543,13 @@ void _ica_par(preprocessVariables* DevicePointers,MatrixXd& W,MatrixXd& X1,Matri
 	
 	//MatrixXd W2(dimensions.n,dimensions.n);
 	
-	W=sym_decorrelation_cuda(DevicePointers->d_w_init,DevicePointers->d_VTT,w_init,dimensions.n);
+	
+	MatrixXf w_init_f(n,n);
+	w_init_f = w_init.cast<float>();
+	memSetForSymDecorrelationCUDA(w_init_f,DevicePointers->d_w_init,dimensions.n);
+	
+	cout<<"w_init before"<<endl<<w_init_f<<endl;
+	W=sym_decorrelation_cuda(DevicePointers->d_w_init,DevicePointers->d_VTT,dimensions.n);
 	//_sym_decorrelation(W,w_init);
 	//cout<<"W GPU"<<endl<<W<<endl;
 	//cout<<"W1 CPU"<<endl<<W<<endl;
@@ -577,6 +586,8 @@ void _ica_par(preprocessVariables* DevicePointers,MatrixXd& W,MatrixXd& X1,Matri
 	MatrixXf tmp(dimensions.n,dimensions.n);
 	
 	cudaVar cudaVariables;
+	
+	cout<<"w_init after"<<endl<<w_init_f<<endl;
 	cudaVariables = initializeCuda(DevicePointers,W,X1,w_init,cudaVariables,dimensions.n,dimensions.p);
 	
 	

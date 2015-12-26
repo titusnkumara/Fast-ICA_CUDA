@@ -25,4 +25,5 @@ void devideVTbySingularValues(float * d_VT,float * d_VTT, float * d_S,int n);
 void multiplyOnGPU_K_X(preprocessVariables* DevicePointers,int n,int p);
 
 
-MatrixXd sym_decorrelation_cuda(float * d_w_init,float * d_VTT, MatrixXd& w_init,int n);
+MatrixXd sym_decorrelation_cuda(float * d_w_init,float * d_VTT,int n);
+void memSetForSymDecorrelationCUDA(MatrixXf& w_init,float * d_w_init,int n);
