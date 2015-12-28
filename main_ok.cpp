@@ -190,9 +190,7 @@ void FastICA::fastica(MatrixXd& X,int n_components, MatrixXd& S, MatrixXd& W,int
 	n = dimensions.n;
 	p = dimensions.p;
 	
-	
-	
-	
+	//timestamp structure
 	timestamp_t prepr0 = get_timestamp();
 	
 	
@@ -546,10 +544,10 @@ void _ica_par(preprocessVariables* DevicePointers,MatrixXd& W,MatrixXd& X1,Matri
 	
 	MatrixXf w_init_f(n,n);
 	w_init_f = w_init.cast<float>();
-	memSetForSymDecorrelationCUDA(w_init_f,DevicePointers->d_w_init,dimensions.n);
+	DevicePointers->d_w_init = memSetForSymDecorrelationCUDA(w_init_f,DevicePointers->d_w_init,DevicePointers->d_VTT,dimensions.n);
 	
 	cout<<"w_init before"<<endl<<w_init_f<<endl;
-	W=sym_decorrelation_cuda(DevicePointers->d_w_init,DevicePointers->d_VTT,dimensions.n);
+	W=sym_decorrelation_cuda(DevicePointers->d_VTT,DevicePointers->d_w_init,dimensions.n);
 	//_sym_decorrelation(W,w_init);
 	//cout<<"W GPU"<<endl<<W<<endl;
 	//cout<<"W1 CPU"<<endl<<W<<endl;
@@ -588,7 +586,7 @@ void _ica_par(preprocessVariables* DevicePointers,MatrixXd& W,MatrixXd& X1,Matri
 	cudaVar cudaVariables;
 	
 	cout<<"w_init after"<<endl<<w_init_f<<endl;
-	cudaVariables = initializeCuda(DevicePointers,W,X1,w_init,cudaVariables,dimensions.n,dimensions.p);
+	cudaVariables = initializeCuda(DevicePointers,X1,w_init,cudaVariables,dimensions.n,dimensions.p);
 	
 	
 	

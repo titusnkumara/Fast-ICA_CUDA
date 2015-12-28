@@ -427,7 +427,7 @@ void devideByDiagonal(float *d_eigenValues,float * d_eigenVectors,float * output
 	}	
 }
 
-MatrixXd invokeDevideByDiagonal(float * d_eigenValues, float * d_eigenVectors,float * d_w_init,int n){
+float * invokeDevideByDiagonal(float * d_eigenValues, float * d_eigenVectors,float * d_w_init,int n){
 	
 	float * output;
 	float * d_eigenVectorT;
@@ -451,26 +451,24 @@ MatrixXd invokeDevideByDiagonal(float * d_eigenValues, float * d_eigenVectors,fl
 	gpu_blas_mmul(output,d_eigenVectorT,d_output_eigenVectorT,n,n,n);
 	gpu_blas_mmul(d_output_eigenVectorT,d_w_init,output,n,n,n);
 	
-	MatrixXf h_output(n,n);
-	cudaMemcpy(h_output.data(),output,n*n*sizeof(float),cudaMemcpyDeviceToHost);
-	cout<<"CUDA sym_D output "<<endl<<h_output<<endl;
+	return output;
 	
-	MatrixXd outputD = h_output.cast<double>();
-	return outputD;
 }
 
-void memSetForSymDecorrelationCUDA(MatrixXf& w_init,float * d_w_init,int n){
+float * memSetForSymDecorrelationCUDA(MatrixXf& w_init,float * d_w_init,float * d_VTT,int n){
 	
 	
 	float * datapointer = w_init.data();
 	cudaMalloc( (void**)&d_w_init, n*n*sizeof(float));checkCudaError();
-	cudaMemcpy( d_w_init, datapointer,n*n*sizeof(float), cudaMemcpyHostToDevice );checkCudaError();
+	cudaMalloc( (void**)&d_VTT, n*n*sizeof(float));checkCudaError();
 	
+	cudaMemcpy( d_w_init, datapointer,n*n*sizeof(float), cudaMemcpyHostToDevice );checkCudaError();
+	return d_w_init;
 }
 
 
 
-MatrixXd sym_decorrelation_cuda(float * d_VTT, float * d_w_init,int n){
+MatrixXd sym_decorrelation_cuda( float * d_VTT, float * d_w_init,int n){
 	
 	
 	//float 
@@ -482,7 +480,7 @@ MatrixXd sym_decorrelation_cuda(float * d_VTT, float * d_w_init,int n){
 	//cout<<"w_init_f"<<endl<<w_init_f<<endl;
 	
 	//float * datapointer = w_init_f.data();
-	//cudaMalloc( (void**)&d_w_init, n*n*sizeof(float));checkCudaError();
+	//cudaMalloc( (void**)&d_VTT, n*n*sizeof(float));checkCudaError();
 	cudaMalloc( (void**)&d_w_init_tr, n*n*sizeof(float));checkCudaError();
 	cudaMalloc( (void**)&d_w_init_w_init_tr, n*n*sizeof(float));checkCudaError();
 	
@@ -583,8 +581,17 @@ MatrixXd sym_decorrelation_cuda(float * d_VTT, float * d_w_init,int n){
 	
 	
 	//invoking devide by diagonal
-	MatrixXd outputD(n,n);
-	outputD=invokeDevideByDiagonal(A,VL,d_w_init,n);
+	float * output;
+	output=invokeDevideByDiagonal(A,VL,d_w_init,n);
+	d_VTT = output;
+	MatrixXf h_output(n,n);
+	cudaMemcpy(h_output.data(),output,n*n*sizeof(float),cudaMemcpyDeviceToHost);
+	cout<<"CUDA sym_D output "<<endl<<h_output<<endl;
+	
+	MatrixXd outputD = h_output.cast<double>();
+	//return outputD;
+	
+	
 	
 	cudaDeviceSynchronize();checkCudaError();
 	//return EXIT_SUCCESS;
@@ -710,11 +717,11 @@ void getMeanNormalizeOnCUDA(VectorXd& means, MatrixXd& X,int n,int p,preprocessV
 
 
 
-cudaVar initializeCuda(preprocessVariables* DevicePointers,MatrixXd& W,MatrixXd& X1,MatrixXd& w_init,cudaVar cudaVariables,int n,int p){
+cudaVar initializeCuda(preprocessVariables* DevicePointers,MatrixXd& X1,MatrixXd& w_init,cudaVar cudaVariables,int n,int p){
 	
 	//matrix sizes
 	
-	MatrixXf f_W = W.cast<float>();
+	//MatrixXf f_W = W.cast<float>();
 	MatrixXf f_X1 = X1.cast<float>();
 	MatrixXf f_w_init = w_init.cast<float>();
 	
@@ -753,7 +760,7 @@ cudaVar initializeCuda(preprocessVariables* DevicePointers,MatrixXd& W,MatrixXd&
 	//malloc
 	cudaMalloc( (void**)&cudaVariables.X1, matsizeX1 );
 	cudaMalloc( (void**)&cudaVariables.X1Transpose, matsizeX1Transpose );
-	cudaMalloc( (void**)&cudaVariables.W, matsizeW );
+	//cudaMalloc( (void**)&cudaVariables.W, matsizeW );
 	cudaMalloc( (void**)&cudaVariables.W1, matsizeW1 );
 	cudaMalloc( (void**)&cudaVariables.w_init, matsizew_init );
 	cudaMalloc( (void**)&cudaVariables.product, matsizeProduct );
@@ -797,7 +804,7 @@ cudaVar initializeCuda(preprocessVariables* DevicePointers,MatrixXd& W,MatrixXd&
 	//pointers to data
 	float *dataFromX1 = f_X1.data();
 	float *datafromX1transpose = f_X1Transpose.data();
-	float *dataFromW = f_W.data();
+	//float *dataFromW = f_W.data();
 	float *dataFromW_init = f_w_init.data();
 	
 	
@@ -805,7 +812,8 @@ cudaVar initializeCuda(preprocessVariables* DevicePointers,MatrixXd& W,MatrixXd&
 	//copy data to CUDA
 	cudaMemcpy( cudaVariables.X1, dataFromX1, matsizeX1, cudaMemcpyHostToDevice );
 	cudaMemcpy( cudaVariables.X1Transpose, datafromX1transpose, matsizeX1Transpose, cudaMemcpyHostToDevice );
-	cudaMemcpy( cudaVariables.W, dataFromW, matsizeW, cudaMemcpyHostToDevice );
+	cudaVariables.W = DevicePointers->d_VTT;
+	//cudaMemcpy( cudaVariables.W, dataFromW, matsizeW, cudaMemcpyHostToDevice );
 	cudaMemcpy( cudaVariables.w_init, dataFromW_init, matsizew_init, cudaMemcpyHostToDevice );
 
 
