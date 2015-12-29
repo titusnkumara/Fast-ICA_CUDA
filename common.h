@@ -43,6 +43,8 @@ struct preprocessVariableList{
 	float * d_S;
 	float * d_w_init;
 	float * d_w_init_T;
+	float * d_X1;
+	float * d_X1_T;
 	
 	
 	
